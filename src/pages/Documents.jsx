@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, Ban, CheckCircle2, Clock, FileText, Link2, Paperclip, Pencil, Plus, ScanLine, ScanText, Search,
+  AlertTriangle, Ban, CheckCircle2, Clock, FileText, Link2, Paperclip, Pencil, Plus, ScanLine, Search,
   Trash2, Users, X,
 } from 'lucide-react';
 import PeriodPicker from '../components/PeriodPicker.jsx';
@@ -69,11 +69,11 @@ function DocRow({ d, thumbUrl, selected, onToggle, canWrite, onView, onEdit, onD
           <span className="chip bg-slate-100 text-slate-600">{directionLabel(d.direction)}</span>
           {pending && <span className="chip bg-amber-100 text-amber-800">ממתין</span>}
           {void_ && <span className="chip bg-slate-200 text-slate-600">לא רלוונטי</span>}
-          {d.ocr_used && <ScanText className="h-3.5 w-3.5 text-brand-600" aria-label="זוהה אוטומטית" />}
           {d.transaction_id && <Link2 className="h-3.5 w-3.5 text-slate-400" aria-label="מקושר לתנועה" />}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-slate-600">
           {d.contacts?.name ? <span className="font-medium">{d.contacts.name}</span> : <span className="text-slate-400">ללא איש קשר</span>}
+          {d.categories?.name && <span className="inline-flex items-center gap-1">· <span className="h-2 w-2 rounded-full" style={{ background: d.categories.color }} />{d.categories.name}</span>}
           {d.doc_date && <span>· {formatDate(d.doc_date)}</span>}
           {d.amount != null && <span className="font-semibold text-slate-800">· {formatILS(d.amount)}</span>}
         </div>
@@ -97,7 +97,7 @@ export default function Documents() {
   const period = usePeriod('month');
   const { docs, loading, error } = useDocuments();
   const { txs } = useTransactions(period.range);
-  const { ownerId, canWrite, contacts } = useFarm();
+  const { ownerId, canWrite, contacts, categories } = useFarm();
   const { openDocForm, openForm, bump, toast } = useUI();
 
   const [tab, setTab] = useState('docs'); // docs | missing
@@ -107,6 +107,7 @@ export default function Documents() {
   const [dirFilter, setDirFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
   const [contactFilter, setContactFilter] = useState(params.get('contact') || '');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [selected, setSelected] = useState(() => new Set());
   const [confirm, setConfirm] = useState(null);
@@ -127,12 +128,13 @@ export default function Documents() {
         if (typeFilter !== 'all' && d.doc_type !== typeFilter) return false;
         if (dirFilter !== 'all' && d.direction !== dirFilter) return false;
         if (contactFilter && d.contact_id !== contactFilter) return false;
+        if (categoryFilter && d.category_id !== categoryFilter) return false;
         if (!inRange(basis === 'upload' ? d.created_at.slice(0, 10) : docDay(d))) return false;
         if (!q) return true;
         return [d.doc_number, d.contacts?.name, d.notes].some((s) => s && String(s).toLowerCase().includes(q));
       })
       .sort((a, b) => (basis === 'upload' ? b.created_at.localeCompare(a.created_at) : docDay(b).localeCompare(docDay(a)) || b.created_at.localeCompare(a.created_at)));
-  }, [docs, query, typeFilter, dirFilter, statusFilter, contactFilter, basis, period.range.from, period.range.to]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [docs, query, typeFilter, dirFilter, statusFilter, contactFilter, categoryFilter, basis, period.range.from, period.range.to]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = visible.slice(0, limit);
   const thumbPaths = shown.map((d) => d.transaction_images?.[0]).filter(Boolean).map((i) => i.thumb_path || i.path);
@@ -189,7 +191,7 @@ export default function Documents() {
           <Link to="/contacts" className="btn-secondary !min-h-[40px]"><Users className="h-4 w-4" /> אנשי קשר</Link>
           {canWrite && (
             <button type="button" className="btn-primary !min-h-[40px]" onClick={() => openDocForm()}>
-              <ScanLine className="h-4 w-4" /> סריקת מסמך
+              <Plus className="h-4 w-4" /> מסמך חדש
             </button>
           )}
         </div>
@@ -230,6 +232,10 @@ export default function Documents() {
               <option value="">כל אנשי הקשר</option>
               {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            <select className="input sm:col-span-2" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="קטגוריה">
+              <option value="">כל הקטגוריות</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.group_name ? `${c.group_name} · ` : ''}{c.name}</option>)}
+            </select>
           </div>
           <div className="flex flex-wrap gap-2">
             <Segmented value={dirFilter} onChange={setDirFilter} options={[{ value: 'all', label: 'הכל' }, { value: 'incoming', label: 'שקיבלתי' }, { value: 'outgoing', label: 'שהנפקתי' }]} />
@@ -239,8 +245,8 @@ export default function Documents() {
 
           {visible.length === 0 ? (
             <div className="card">
-              <Empty icon={FileText} title={docs.length ? 'לא נמצאו מסמכים תואמים' : 'עדיין אין מסמכים'} hint={docs.length ? 'נסו לשנות את הסינון או את התקופה.' : 'צלמו תעודת משלוח או קבלה והמערכת תזהה את המספר לבד.'}>
-                {canWrite && !docs.length && <button type="button" className="btn-primary mt-2" onClick={() => openDocForm()}><ScanLine className="h-4 w-4" /> סריקת מסמך ראשון</button>}
+              <Empty icon={FileText} title={docs.length ? 'לא נמצאו מסמכים תואמים' : 'עדיין אין מסמכים'} hint={docs.length ? 'נסו לשנות את הסינון או את התקופה.' : 'הוסיפו תעודת משלוח או קבלה: מספר, תאריך, סכום, קטגוריה ותמונה.'}>
+                {canWrite && !docs.length && <button type="button" className="btn-primary mt-2" onClick={() => openDocForm()}><Plus className="h-4 w-4" /> הוספת מסמך ראשון</button>}
               </Empty>
             </div>
           ) : (

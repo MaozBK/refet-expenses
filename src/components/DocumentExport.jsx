@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Mail, PackageOpen } from 'lucide-react';
-import SendEmailModal from './SendEmailModal.jsx';
+import { Download, MessageCircle, PackageOpen } from 'lucide-react';
 import { ErrorBox, PageLoader, Segmented, Spinner } from './ui.jsx';
 import { useFarm } from '../context/FarmContext.jsx';
 import { useUI } from '../context/UIContext.jsx';
 import { useDocuments } from '../hooks/useDocuments.js';
-import { cleanupExports } from '../lib/api.js';
-import { DOC_TYPES, directionLabel, docDay, formatDateTime, typeLabel } from '../lib/documents.js';
+import { DOC_TYPES, directionLabel, docDay, formatDateTime, typeLabel, waHref } from '../lib/documents.js';
 import { formatDate } from '../lib/format.js';
 import { getSignedUrls } from '../lib/images.js';
 import { buildZip, downloadBlob, safeName, toCsv } from '../lib/zip.js';
@@ -19,7 +17,7 @@ const ext = (path) => (path.split('.').pop() || 'jpg').toLowerCase();
  * downloaded or e-mailed straight from the app.
  */
 export default function DocumentExport({ period, txs }) {
-  const { ownerId, contacts, categories, farmName } = useFarm();
+  const { contacts, categories, farmName } = useFarm();
   const { toast } = useUI();
   const { docs, loading } = useDocuments();
 
@@ -31,11 +29,7 @@ export default function DocumentExport({ period, txs }) {
   const [categoryId, setCategoryId] = useState('');
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
-  const [emailing, setEmailing] = useState(false);
-
-  useEffect(() => {
-    cleanupExports(ownerId);
-  }, [ownerId]);
+  const [fallback, setFallback] = useState(null); // { url } shown when the browser cannot share files directly
 
   const inRange = (day) => (!period.range.from || day >= period.range.from) && (!period.range.to || day <= period.range.to);
 
@@ -50,9 +44,10 @@ export default function DocumentExport({ period, txs }) {
               types.has(d.doc_type) &&
               (direction === 'all' || d.direction === direction) &&
               (!contactId || d.contact_id === contactId) &&
+              (!categoryId || d.category_id === categoryId) &&
               inRange(docDay(d)),
           ),
-    [docs, withDocs, types, direction, contactId, period.range.from, period.range.to], // eslint-disable-line react-hooks/exhaustive-deps
+    [docs, withDocs, types, direction, contactId, categoryId, period.range.from, period.range.to], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const selTx = useMemo(
@@ -120,12 +115,39 @@ export default function DocumentExport({ period, txs }) {
   };
 
   const download = async () => {
+    setFallback(null);
     try {
       const f = await makePackage();
       downloadBlob(f.blob, f.filename);
       toast(`החבילה ירדה – ${f.added} תמונות (${(f.blob.size / 1048576).toFixed(1)}MB)`);
     } catch (e) {
       setError(e.message || 'יצירת החבילה נכשלה');
+    } finally {
+      setProgress('');
+    }
+  };
+
+  const contactPhone = contacts.find((c) => c.id === contactId)?.phone;
+
+  /** Phones: shares the ZIP straight into WhatsApp. Elsewhere: downloads it and offers a WhatsApp link. */
+  const shareWhatsApp = async () => {
+    setFallback(null);
+    const text = `מסמכים – ${farmName} – ${period.label}\n${photoCount} תמונות (תעודות משלוח וקבלות)`;
+    try {
+      const f = await makePackage();
+      const file = new File([f.blob], f.filename, { type: 'application/zip' });
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: 'מסמכים', text });
+        } catch (e) {
+          if (e.name !== 'AbortError') throw e;
+        }
+      } else {
+        downloadBlob(f.blob, f.filename);
+        setFallback({ url: waHref(contactPhone, text) || `https://wa.me/?text=${encodeURIComponent(text)}` });
+      }
+    } catch (e) {
+      setError(e.message || 'השיתוף נכשל');
     } finally {
       setProgress('');
     }
@@ -173,8 +195,8 @@ export default function DocumentExport({ period, txs }) {
             <option value="">כל אנשי הקשר (לקוחות וספקים)</option>
             {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} aria-label="קטגוריה" disabled={!withTx}>
-            <option value="">כל הקטגוריות (לקבלות תנועות)</option>
+          <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} aria-label="קטגוריה">
+            <option value="">כל הקטגוריות</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.group_name ? `${c.group_name} · ` : ''}{c.name}</option>)}
           </select>
         </div>
@@ -192,28 +214,20 @@ export default function DocumentExport({ period, txs }) {
             {busy ? <Spinner className="h-5 w-5" /> : <Download className="h-5 w-5" />}
             {busy ? progress : 'הורדת ZIP'}
           </button>
-          <button type="button" className="btn-secondary !min-h-[52px]" disabled={busy || photoCount === 0} onClick={() => setEmailing(true)}>
-            <Mail className="h-5 w-5" /> שליחה במייל
+          <button type="button" className="btn-secondary !min-h-[52px]" disabled={busy || photoCount === 0} onClick={shareWhatsApp}>
+            <MessageCircle className="h-5 w-5" /> שיתוף בוואטסאפ
           </button>
         </div>
+        {fallback && (
+          <div className="space-y-2 rounded-2xl bg-brand-50 p-4 text-sm text-brand-900 ring-1 ring-brand-200">
+            <p>הקובץ ירד למכשיר. פתחו את וואטסאפ וצרפו אותו להודעה (צירוף ← מסמך).</p>
+            <a href={fallback.url} target="_blank" rel="noreferrer" className="btn-primary w-full">
+              <MessageCircle className="h-4 w-4" /> פתיחת וואטסאפ{contactPhone ? ' לאיש הקשר שנבחר' : ''}
+            </a>
+          </div>
+        )}
         <ErrorBox>{error}</ErrorBox>
       </section>
-
-      {emailing && (
-        <SendEmailModal
-          defaultSubject={`מסמכים – ${farmName} – ${period.label}`}
-          defaultMessage={`שלום,\nמצורפים המסמכים (תעודות משלוח וקבלות) לתקופה ${period.label}.\nבתיקייה גם קובץ index.csv עם פירוט כל הקבצים.`}
-          fileLabel={`ZIP עם ${photoCount} תמונות`}
-          buildFile={async () => {
-            try {
-              return await makePackage();
-            } finally {
-              setProgress('');
-            }
-          }}
-          onClose={() => setEmailing(false)}
-        />
-      )}
     </div>
   );
 }

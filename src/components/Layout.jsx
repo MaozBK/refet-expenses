@@ -55,7 +55,7 @@ function AddMenu() {
         {open && (
           <div className="flex animate-rise flex-col items-end gap-2">
             <button type="button" onClick={pick(() => openDocForm())} className="flex h-12 items-center gap-2 rounded-full bg-white px-5 font-bold text-slate-800 shadow-lg ring-1 ring-slate-200">
-              <ScanLine className="h-5 w-5 text-brand-600" /> סריקת מסמך / תעודה
+              <FileStack className="h-5 w-5 text-brand-600" /> תעודה / קבלה / חשבונית
             </button>
             <button type="button" onClick={pick(() => openForm())} className="flex h-12 items-center gap-2 rounded-full bg-white px-5 font-bold text-slate-800 shadow-lg ring-1 ring-slate-200">
               <WalletCards className="h-5 w-5 text-brand-600" /> הוצאה / הכנסה

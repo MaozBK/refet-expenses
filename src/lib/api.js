@@ -1,10 +1,11 @@
 import { supabase } from './supabase.js';
-import { fileToBase64Jpeg, removeFiles, uploadReceipt } from './images.js';
+import { removeFiles, uploadReceipt } from './images.js';
 import { todayISO } from './format.js';
 
 const TX_SELECT =
   '*, categories(name,color,group_name), contacts(name,phone), transaction_images(id,path,thumb_path,created_at)';
-const DOC_SELECT = '*, contacts(name,phone,email), transaction_images(id,path,thumb_path,created_at)';
+const DOC_SELECT =
+  '*, contacts(name,phone,email), categories(name,color,group_name), transaction_images(id,path,thumb_path,created_at)';
 
 async function fetchAll(build) {
   const PAGE = 1000;
@@ -135,9 +136,9 @@ export async function saveDocument({ ownerId, id, values, removedImages = [], ne
     doc_number: values.doc_number?.trim() || null,
     doc_date: values.doc_date || null,
     contact_id: values.contact_id || null,
+    category_id: values.category_id || null,
     amount: values.amount === '' || values.amount == null ? null : values.amount,
     notes: values.notes?.trim() || null,
-    ocr_used: Boolean(values.ocr_used),
   };
 
   let docId = id;
@@ -222,79 +223,6 @@ export async function setDocumentStatus(ids, status) {
   if (error) throw error;
 }
 
-// ---------------------------------------------------------------------
-// Document reading (Edge Function → Claude vision)
-// ---------------------------------------------------------------------
-export const SCAN_ERRORS = {
-  not_configured: 'הזיהוי האוטומטי עדיין לא הופעל בשרת – אפשר למלא ידנית.',
-  daily_limit: 'הגעתם למכסת הסריקות היומית – מלאו ידנית.',
-  bad_image: 'התמונה לא נתמכת לזיהוי – מלאו ידנית.',
-  unauthorized: 'פג תוקף ההתחברות – התחברו מחדש.',
-  scan_failed: 'הזיהוי האוטומטי נכשל – מלאו ידנית.',
-};
-
-async function invoke(name, body) {
-  const { data, error } = await supabase.functions.invoke(name, { body });
-  if (error) {
-    let code = 'scan_failed';
-    let detail = null;
-    try {
-      const j = await error.context.json();
-      code = j.error || code;
-      detail = j.detail || null;
-    } catch {
-      /* network error */
-    }
-    const e = new Error(code);
-    e.code = code;
-    e.detail = detail;
-    throw e;
-  }
-  return data;
-}
-
-export async function scanDocument(file) {
-  const { base64, media_type } = await fileToBase64Jpeg(file);
-  const data = await invoke('scan-document', { image_base64: base64, media_type });
-  return data.result;
-}
-
-// ---------------------------------------------------------------------
-// Export packages (ZIP / PDF) and e-mail
-// ---------------------------------------------------------------------
-export async function uploadExport(ownerId, blob, ext, contentType) {
-  const path = `${ownerId}/${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from('exports').upload(path, blob, { contentType, upsert: false });
-  if (error) throw error;
-  return path;
-}
-
-export const EMAIL_ERRORS = {
-  not_configured: 'שליחת המייל עדיין לא הופעלה בשרת (חסר מפתח Resend).',
-  daily_limit: 'הגעתם למכסת המיילים היומית.',
-  bad_recipients: 'כתובת אימייל לא תקינה (עד 5 נמענים).',
-  file_not_found: 'הקובץ לא נמצא – נסו שוב.',
-  send_failed: 'שירות המייל דחה את השליחה.',
-  unauthorized: 'פג תוקף ההתחברות – התחברו מחדש.',
-};
-
-export async function sendExportEmail(payload) {
-  return invoke('send-export-email', payload);
-}
-
-/** Best effort: delete temporary packages older than a week. */
-export async function cleanupExports(ownerId) {
-  try {
-    const { data } = await supabase.storage.from('exports').list(ownerId, { limit: 100 });
-    const old = (data || [])
-      .filter((f) => f.created_at && Date.now() - new Date(f.created_at).getTime() > 7 * 24 * 3600 * 1000)
-      .map((f) => `${ownerId}/${f.name}`);
-    if (old.length) await supabase.storage.from('exports').remove(old);
-  } catch {
-    /* ignore */
-  }
-}
-
 export async function deleteAccount(userId) {
   // 1. remove every receipt photo (and thumbnail) through the Storage API
   const paths = [];
@@ -309,9 +237,6 @@ export async function deleteAccount(userId) {
     if (data.length < 1000) break;
   }
   await removeFiles(paths);
-  // leftover temporary export packages
-  const { data: exp } = await supabase.storage.from('exports').list(userId, { limit: 1000 });
-  if (exp?.length) await supabase.storage.from('exports').remove(exp.map((f) => `${userId}/${f.name}`));
   // 2. delete the auth user – cascades to all rows
   const { error } = await supabase.rpc('delete_my_account');
   if (error) throw error;

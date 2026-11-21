@@ -2,7 +2,6 @@ import { BUCKET, supabase } from './supabase.js';
 
 const MAX_SIDE = 2400;
 const THUMB_SIDE = 420;
-const SCAN_SIDE = 1600;
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 /** Decodes (honouring EXIF rotation), downsizes and re-encodes as JPEG. */
@@ -56,18 +55,6 @@ export async function uploadReceipt(ownerId, parentId, file) {
     /* thumbnail is optional */
   }
   return { path, thumbPath };
-}
-
-/** Smaller JPEG as base64 for the document-reading function. */
-export async function fileToBase64Jpeg(file) {
-  const blob = await resizeToJpeg(file, SCAN_SIDE, 0.85);
-  const base64 = await new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(',')[1]);
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-  return { base64, media_type: 'image/jpeg' };
 }
 
 export async function removeFiles(paths) {
