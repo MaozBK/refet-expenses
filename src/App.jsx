@@ -6,7 +6,9 @@ import { UIProvider } from './context/UIContext.jsx';
 import Layout from './components/Layout.jsx';
 import { PageLoader } from './components/ui.jsx';
 import Auth from './pages/Auth.jsx';
+import Contacts from './pages/Contacts.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Documents from './pages/Documents.jsx';
 import Reports from './pages/Reports.jsx';
 import SetupNeeded from './pages/SetupNeeded.jsx';
 import Settings from './pages/Settings.jsx';
@@ -23,6 +25,8 @@ function Gate() {
           <Route element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="transactions" element={<Transactions />} />
+            <Route path="documents" element={<Documents />} />
+            <Route path="contacts" element={<Contacts />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />

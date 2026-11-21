@@ -2,6 +2,9 @@ import { addDays, fromISO, pad, toISO } from './format.js';
 
 export const NO_CATEGORY = 'ללא קטגוריה';
 export const NO_CATEGORY_COLOR = '#94a3b8';
+export const NO_GROUP = 'ללא קבוצה';
+
+const GROUP_COLORS = ['#16a34a', '#0ea5e9', '#f97316', '#8b5cf6', '#ec4899', '#eab308', '#14b8a6', '#ef4444', '#64748b', '#a16207'];
 
 export function sumTotals(txs) {
   let income = 0;
@@ -11,6 +14,12 @@ export function sumTotals(txs) {
     else expense += t.amount;
   }
   return { income, expense, net: income - expense };
+}
+
+function finish(map, total) {
+  return [...map.values()]
+    .map((r) => ({ ...r, value: Math.round(r.value * 100) / 100, pct: total ? (r.value / total) * 100 : 0 }))
+    .sort((a, b) => b.value - a.value);
 }
 
 /** Exact aggregated totals per category for one transaction type, largest first. */
@@ -35,9 +44,27 @@ export function byCategory(txs, type) {
     row.count += 1;
     total += t.amount;
   }
-  return [...map.values()]
-    .map((r) => ({ ...r, value: Math.round(r.value * 100) / 100, pct: total ? (r.value / total) * 100 : 0 }))
-    .sort((a, b) => b.value - a.value);
+  return finish(map, total);
+}
+
+/** Same, but rolled up by category group ("feed & nutrition", "herd health"…). */
+export function byGroup(txs, type) {
+  const map = new Map();
+  let total = 0;
+  let i = 0;
+  for (const t of txs) {
+    if (t.type !== type) continue;
+    const name = t.categories?.group_name || NO_GROUP;
+    let row = map.get(name);
+    if (!row) {
+      row = { id: name, name, color: name === NO_GROUP ? NO_CATEGORY_COLOR : GROUP_COLORS[i++ % GROUP_COLORS.length], value: 0, count: 0 };
+      map.set(name, row);
+    }
+    row.value += t.amount;
+    row.count += 1;
+    total += t.amount;
+  }
+  return finish(map, total);
 }
 
 /** Income/expense per day (short ranges) or per month (long ranges). */

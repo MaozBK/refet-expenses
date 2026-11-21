@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { LogOut, Plus, Trash2, UserPlus, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ChevronLeft, LogOut, Plus, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { ConfirmDialog, ErrorBox, Segmented, Spinner } from '../components/ui.jsx';
 import { hebrewError, useAuth } from '../context/AuthContext.jsx';
 import { useFarm } from '../context/FarmContext.jsx';
@@ -71,17 +72,24 @@ function CategoriesSection() {
   const { toast, bump } = useUI();
   const [type, setType] = useState('expense');
   const [name, setName] = useState('');
+  const [group, setGroup] = useState('');
   const [color, setColor] = useState(COLORS[0]);
   const [busy, setBusy] = useState(false);
   const [toDelete, setToDelete] = useState(null);
 
   const list = categories.filter((c) => c.type === type);
+  const groups = [...new Set(list.map((c) => c.group_name).filter(Boolean))];
+  const grouped = groups
+    .map((g) => [g, list.filter((c) => c.group_name === g)])
+    .concat(list.some((c) => !c.group_name) ? [['ללא קבוצה', list.filter((c) => !c.group_name)]] : []);
 
   const add = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
-    const { error } = await supabase.from('categories').insert({ owner_id: ownerId, name: name.trim(), type, color });
+    const { error } = await supabase
+      .from('categories')
+      .insert({ owner_id: ownerId, name: name.trim(), type, color, group_name: group.trim() || null });
     setBusy(false);
     if (error) return toast(error.code === '23505' ? 'קטגוריה בשם זה כבר קיימת' : error.message, 'error');
     setName('');
@@ -103,25 +111,36 @@ function CategoriesSection() {
   return (
     <Section title="קטגוריות" hint="תנועות בקטגוריה שנמחקה יישארו ללא קטגוריה.">
       <Segmented value={type} onChange={setType} options={[{ value: 'expense', label: 'הוצאות' }, { value: 'income', label: 'הכנסות' }]} />
-      <ul className="divide-y divide-slate-100">
-        {list.map((c) => (
-          <li key={c.id} className="flex items-center justify-between py-2">
-            <span className="flex items-center gap-2.5 text-sm font-medium">
-              <span className="h-4 w-4 rounded-full" style={{ background: c.color }} />
-              {c.name}
-            </span>
-            {canWrite && (
-              <button type="button" className="icon-btn hover:!bg-red-50 hover:!text-red-600" onClick={() => setToDelete(c)} aria-label={`מחיקת ${c.name}`}>
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
-          </li>
+      <div className="space-y-4">
+        {grouped.map(([g, items]) => (
+          <div key={g}>
+            <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">{g}</div>
+            <ul className="divide-y divide-slate-100">
+              {items.map((c) => (
+                <li key={c.id} className="flex items-center justify-between py-2">
+                  <span className="flex items-center gap-2.5 text-sm font-medium">
+                    <span className="h-4 w-4 rounded-full" style={{ background: c.color }} />
+                    {c.name}
+                  </span>
+                  {canWrite && (
+                    <button type="button" className="icon-btn hover:!bg-red-50 hover:!text-red-600" onClick={() => setToDelete(c)} aria-label={`מחיקת ${c.name}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
-        {list.length === 0 && <li className="py-3 text-sm text-slate-500">אין קטגוריות.</li>}
-      </ul>
+        {list.length === 0 && <p className="py-3 text-sm text-slate-500">אין קטגוריות.</p>}
+      </div>
       {canWrite && (
         <form onSubmit={add} className="space-y-3 rounded-2xl bg-slate-50 p-3">
           <input className="input" placeholder="שם קטגוריה חדשה" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+          <input className="input" list="category-groups" placeholder="קבוצה (למשל: מזון ותזונה) – אופציונלי" value={group} onChange={(e) => setGroup(e.target.value)} maxLength={60} />
+          <datalist id="category-groups">
+            {groups.map((g) => <option key={g} value={g} />)}
+          </datalist>
           <div className="flex flex-wrap items-center gap-2">
             {COLORS.map((c) => (
               <button
@@ -329,6 +348,10 @@ export default function Settings() {
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-extrabold text-slate-900">הגדרות</h1>
+      <Link to="/contacts" className="card flex items-center justify-between !p-4 transition hover:ring-brand-300">
+        <span className="flex items-center gap-3 font-bold"><Users className="h-5 w-5 text-brand-600" /> אנשי קשר – לקוחות, ספקים ורואה חשבון</span>
+        <ChevronLeft className="h-5 w-5 text-slate-400" />
+      </Link>
       {isOwner && <ProfileSection />}
       <CategoriesSection />
       <SharingSection />

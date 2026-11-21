@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ImagePlus, Trash2, Undo2 } from 'lucide-react';
 import { Modal, Spinner } from './ui.jsx';
+import ContactPicker from './ContactPicker.jsx';
 import { useFarm } from '../context/FarmContext.jsx';
 import { useUI } from '../context/UIContext.jsx';
 import { useSignedUrls } from '../hooks/useSignedUrls.js';
@@ -9,7 +10,7 @@ import { todayISO } from '../lib/format.js';
 
 /** Add / edit sheet. `tx` = existing transaction (with transaction_images) or null for a new one. */
 export default function TransactionForm({ tx, onClose }) {
-  const { ownerId, categories } = useFarm();
+  const { ownerId, categories, contacts } = useFarm();
   const { toast, bump } = useUI();
   const editing = Boolean(tx);
 
@@ -18,6 +19,8 @@ export default function TransactionForm({ tx, onClose }) {
   const [date, setDate] = useState(tx?.tx_date || todayISO());
   const [categoryId, setCategoryId] = useState(tx?.category_id || '');
   const [vendor, setVendor] = useState(tx?.vendor || '');
+  const [contactId, setContactId] = useState(tx?.contact_id || '');
+  const [noReceipt, setNoReceipt] = useState(Boolean(tx?.no_receipt_needed));
   const [notes, setNotes] = useState(tx?.notes || '');
   const [existing] = useState(tx?.transaction_images || []);
   const [removedIds, setRemovedIds] = useState([]);
@@ -27,8 +30,23 @@ export default function TransactionForm({ tx, onClose }) {
   const pickRef = useRef(null);
   const camRef = useRef(null);
 
-  const urls = useSignedUrls(existing.map((i) => i.path));
+  const urls = useSignedUrls(existing.map((i) => i.thumb_path || i.path));
   const typeCategories = useMemo(() => categories.filter((c) => c.type === type), [categories, type]);
+  const groupedCategories = useMemo(() => {
+    const groups = new Map();
+    for (const c of typeCategories) {
+      const g = c.group_name || 'אחר';
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(c);
+    }
+    return [...groups.entries()];
+  }, [typeCategories]);
+
+  const chooseContact = (id) => {
+    setContactId(id);
+    const c = contacts.find((x) => x.id === id);
+    if (c && !vendor.trim()) setVendor(c.name);
+  };
 
   // keep the selected category valid for the chosen type
   useEffect(() => {
@@ -55,7 +73,16 @@ export default function TransactionForm({ tx, onClose }) {
       const { failedUploads } = await saveTransaction({
         ownerId,
         id: tx?.id,
-        values: { type, amount: Math.round(value * 100) / 100, tx_date: date, category_id: categoryId, vendor, notes },
+        values: {
+          type,
+          amount: Math.round(value * 100) / 100,
+          tx_date: date,
+          category_id: categoryId,
+          contact_id: contactId,
+          vendor,
+          notes,
+          no_receipt_needed: noReceipt && existing.length - removedIds.length + files.length === 0,
+        },
         removedImages: existing.filter((i) => removedIds.includes(i.id)),
         newFiles: files.map((f) => f.file),
       });
@@ -143,18 +170,29 @@ export default function TransactionForm({ tx, onClose }) {
             </label>
             <select id="tx-cat" className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               <option value="">ללא קטגוריה</option>
-              {typeCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
+              {groupedCategories.map(([group, list]) => (
+                <optgroup key={group} label={group}>
+                  {list.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
         </div>
 
         <div>
+          <label className="label" htmlFor="tx-contact">
+            {isExpense ? 'ספק מרשימת אנשי הקשר' : 'לקוח מרשימת אנשי הקשר'}
+          </label>
+          <ContactPicker id="tx-contact" value={contactId} onChange={chooseContact} defaultKind={isExpense ? 'supplier' : 'customer'} emptyLabel="לא נבחר" />
+        </div>
+
+        <div>
           <label className="label" htmlFor="tx-vendor">
-            {isExpense ? 'ספק' : 'לקוח'}
+            {isExpense ? 'ספק (שם חופשי)' : 'לקוח (שם חופשי)'}
           </label>
           <input
             id="tx-vendor"
@@ -256,6 +294,12 @@ export default function TransactionForm({ tx, onClose }) {
               e.target.value = '';
             }}
           />
+          {existing.length - removedIds.length + files.length === 0 && (
+            <label className="mt-3 flex min-h-[40px] items-center gap-3 text-sm text-slate-600">
+              <input type="checkbox" className="h-5 w-5 accent-brand-600" checked={noReceipt} onChange={(e) => setNoReceipt(e.target.checked)} />
+              לא נדרשת קבלה לתנועה זו (לא תופיע ברשימת "חסר לי")
+            </label>
+          )}
         </div>
 
         {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</div>}

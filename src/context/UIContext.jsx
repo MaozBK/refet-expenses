@@ -9,6 +9,7 @@ export function UIProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [formState, setFormState] = useState(null); // { tx } | null
+  const [docFormState, setDocFormState] = useState(null); // { doc, preset } | null
   const idRef = useRef(0);
 
   const toast = useCallback((message, type = 'success') => {
@@ -25,8 +26,11 @@ export function UIProvider({ children }) {
       formState,
       openForm: (tx = null) => setFormState({ tx }),
       closeForm: () => setFormState(null),
+      docFormState,
+      openDocForm: (doc = null, preset = {}) => setDocFormState({ doc, preset }),
+      closeDocForm: () => setDocFormState(null),
     }),
-    [toast, refreshKey, formState],
+    [toast, refreshKey, formState, docFormState],
   );
 
   return (

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { useSignedUrls } from '../hooks/useSignedUrls.js';
+import { formatDateTime } from '../lib/documents.js';
 import { Modal, Spinner } from './ui.jsx';
 
-export default function ReceiptViewer({ images, title = 'קבלות וחשבוניות', onClose }) {
+/** Full-size viewer for receipt / document photos, with the upload time. */
+export default function ReceiptViewer({ images, title = 'קבלות וחשבוניות', subtitle, onClose }) {
   const [index, setIndex] = useState(0);
   const urls = useSignedUrls(images.map((i) => i.path));
   const current = images[index];
@@ -11,9 +13,10 @@ export default function ReceiptViewer({ images, title = 'קבלות וחשבונ
 
   return (
     <Modal title={title} onClose={onClose} size="lg">
+      {subtitle && <p className="-mt-1 mb-3 text-sm text-slate-500">{subtitle}</p>}
       <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
         {url ? (
-          <img src={url} alt={`תמונה ${index + 1}`} className="max-h-[60dvh] w-full object-contain" />
+          <img src={url} alt={`תמונה ${index + 1}`} className="max-h-[62dvh] w-full object-contain" />
         ) : (
           <Spinner className="h-7 w-7 text-slate-400" />
         )}
@@ -38,9 +41,10 @@ export default function ReceiptViewer({ images, title = 'קבלות וחשבונ
           </>
         )}
       </div>
-      <div className="mt-3 flex items-center justify-between text-sm text-slate-500">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
         <span>
           {index + 1} / {images.length}
+          {current?.created_at && <span className="ms-2">· הועלה {formatDateTime(current.created_at)}</span>}
         </span>
         {url && (
           <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-brand-700">

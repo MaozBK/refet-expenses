@@ -13,6 +13,21 @@
 4. **Authentication → URL Configuration**: הגדירו `Site URL` ל-URL של האתר (בפיתוח: `http://localhost:5173`) והוסיפו אותו גם ל-`Redirect URLs` (נדרש לאימות אימייל, איפוס סיסמה ו-Google).
 5. **Project Settings → API**: העתיקו את `Project URL` ו-`anon public key`.
 
+#### מסמכים, אנשי קשר, זיהוי אוטומטי ושליחת מייל
+הריצו אחרי הסקריפט הראשון (בסדר הזה) ב-SQL Editor:
+1. [`20250201000000_documents_contacts.sql`](supabase/migrations/20250201000000_documents_contacts.sql) – מסמכים (תעודות משלוח/קבלות/חשבוניות), אנשי קשר, קבוצות קטגוריות, תמונות ממוזערות ו-bucket בשם `exports`.
+2. [`20250202000000_function_usage.sql`](supabase/migrations/20250202000000_function_usage.sql) – מכסות שימוש יומיות לפונקציות.
+
+שתי Edge Functions (תיקיית [`supabase/functions`](supabase/functions)) – פריסה: `supabase functions deploy scan-document` ו-`supabase functions deploy send-export-email`. ב-**Project Settings → Edge Functions → Secrets** הגדירו:
+
+| Secret | למה | הערות |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | זיהוי מספר/תאריך/סכום מצילום (`scan-document`) | מפתח מ-console.anthropic.com. עלות של כמה אגורות לסריקה. מכסה: 150 סריקות ליום למשתמש. אופציונלי: `ANTHROPIC_MODEL` |
+| `RESEND_API_KEY` | שליחת מייל עם ZIP/PDF (`send-export-email`) | חשבון חינמי ב-resend.com. מכסה: 30 מיילים ליום למשתמש |
+| `RESEND_FROM` | כתובת השולח, למשל `Refet <reports@yourdomain.co.il>` | בלי אימות דומיין ב-Resend אפשר לשלוח רק לכתובת של בעל חשבון Resend. כדי לשלוח לרואה חשבון/לקוחות יש לאמת דומיין |
+
+בלי ה-secrets האפליקציה ממשיכה לעבוד: מילוי ידני של פרטי המסמך, והורדת ZIP/PDF והעברה ידנית.
+
 ### 2. הרצה מקומית
 ```bash
 npm install

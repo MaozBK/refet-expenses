@@ -5,7 +5,7 @@ import PeriodPicker from '../components/PeriodPicker.jsx';
 import { Empty, ErrorBox, PageLoader, Segmented } from '../components/ui.jsx';
 import { usePeriod } from '../hooks/usePeriod.js';
 import { useTransactions } from '../hooks/useTransactions.js';
-import { byCategory, sumTotals, timeSeries } from '../lib/analytics.js';
+import { byCategory, byGroup, sumTotals, timeSeries } from '../lib/analytics.js';
 import { formatCompact, formatILS, formatPct } from '../lib/format.js';
 
 function Stat({ icon: Icon, label, value, tone }) {
@@ -33,10 +33,11 @@ export default function Dashboard() {
   const period = usePeriod('month');
   const { txs, loading, error } = useTransactions(period.range);
   const [pieType, setPieType] = useState('expense');
+  const [grouping, setGrouping] = useState('category'); // category | group
 
   const totals = useMemo(() => sumTotals(txs), [txs]);
   const series = useMemo(() => timeSeries(txs, period.range), [txs, period.range]);
-  const cats = useMemo(() => byCategory(txs, pieType), [txs, pieType]);
+  const cats = useMemo(() => (grouping === 'group' ? byGroup(txs, pieType) : byCategory(txs, pieType)), [txs, pieType, grouping]);
   const pieTotal = pieType === 'expense' ? totals.expense : totals.income;
 
   return (
@@ -84,15 +85,25 @@ export default function Dashboard() {
 
               <section className="card">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="font-bold">פילוח לפי קטגוריות</h2>
-                  <Segmented
-                    value={pieType}
-                    onChange={setPieType}
-                    options={[
-                      { value: 'expense', label: 'הוצאות' },
-                      { value: 'income', label: 'הכנסות' },
-                    ]}
-                  />
+                  <h2 className="font-bold">פילוח לפי {grouping === 'group' ? 'קבוצות' : 'קטגוריות'}</h2>
+                  <div className="flex flex-wrap gap-2">
+                    <Segmented
+                      value={grouping}
+                      onChange={setGrouping}
+                      options={[
+                        { value: 'category', label: 'קטגוריה' },
+                        { value: 'group', label: 'קבוצה' },
+                      ]}
+                    />
+                    <Segmented
+                      value={pieType}
+                      onChange={setPieType}
+                      options={[
+                        { value: 'expense', label: 'הוצאות' },
+                        { value: 'income', label: 'הכנסות' },
+                      ]}
+                    />
+                  </div>
                 </div>
                 {cats.length === 0 ? (
                   <p className="py-8 text-center text-sm text-slate-500">אין {pieType === 'expense' ? 'הוצאות' : 'הכנסות'} בתקופה זו.</p>
@@ -138,12 +149,12 @@ export default function Dashboard() {
               </section>
 
               <section className="card overflow-hidden !p-0">
-                <h2 className="px-5 pb-2 pt-4 font-bold">סיכום מדויק לפי קטגוריה</h2>
+                <h2 className="px-5 pb-2 pt-4 font-bold">סיכום מדויק לפי {grouping === 'group' ? 'קבוצה' : 'קטגוריה'}</h2>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-xs text-slate-500">
                       <tr>
-                        <th className="px-5 py-2 text-start font-medium">קטגוריה</th>
+                        <th className="px-5 py-2 text-start font-medium">{grouping === 'group' ? 'קבוצה' : 'קטגוריה'}</th>
                         <th className="px-3 py-2 text-start font-medium">תנועות</th>
                         <th className="px-3 py-2 text-start font-medium">אחוז</th>
                         <th className="px-5 py-2 text-end font-medium">סכום</th>

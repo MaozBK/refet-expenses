@@ -19,6 +19,12 @@ export function FarmProvider({ children }) {
   const [ownerId, setOwnerId] = useState(user.id);
   const [ownerProfile, setOwnerProfile] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [contacts, setContacts] = useState([]);
+
+  const loadContacts = useCallback(async (owner) => {
+    const { data } = await supabase.from('contacts').select('*').eq('owner_id', owner).order('name');
+    setContacts(data || []);
+  }, []);
 
   const loadProfile = useCallback(async () => {
     let { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
@@ -75,9 +81,10 @@ export function FarmProvider({ children }) {
   useEffect(() => {
     if (!ready) return;
     loadCategories(ownerId);
+    loadContacts(ownerId);
     if (ownerId === user.id) setOwnerProfile(profile);
     else supabase.from('profiles').select('*').eq('id', ownerId).maybeSingle().then(({ data }) => setOwnerProfile(data));
-  }, [ready, ownerId, user.id, profile, loadCategories]);
+  }, [ready, ownerId, user.id, profile, loadCategories, loadContacts]);
 
   const switchFarm = useCallback(
     (id) => {
@@ -107,6 +114,8 @@ export function FarmProvider({ children }) {
       sharedFarms,
       switchFarm,
       categories,
+      contacts,
+      reloadContacts: () => loadContacts(ownerId),
       farmName:
         ownerProfile?.farm_name ||
         (isOwner ? profile?.farm_name : sharedFarms.find((f) => f.owner_id === ownerId)?.name) ||
@@ -115,7 +124,7 @@ export function FarmProvider({ children }) {
       reloadProfile: loadProfile,
       reloadFarms: loadFarms,
     }),
-    [ready, profile, ownerId, ownerProfile, isOwner, role, sharedFarms, switchFarm, categories, loadCategories, loadProfile, loadFarms],
+    [ready, profile, ownerId, ownerProfile, isOwner, role, sharedFarms, switchFarm, categories, contacts, loadCategories, loadContacts, loadProfile, loadFarms],
   );
 
   return <FarmCtx.Provider value={value}>{children}</FarmCtx.Provider>;

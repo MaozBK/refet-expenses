@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FileSpreadsheet, FileText, Mail, MessageCircle, Share2 } from 'lucide-react';
+import DocumentExport from '../components/DocumentExport.jsx';
 import PeriodPicker from '../components/PeriodPicker.jsx';
 import ReportPages from '../components/ReportPages.jsx';
+import SendEmailModal from '../components/SendEmailModal.jsx';
 import { ErrorBox, PageLoader, Segmented, Spinner } from '../components/ui.jsx';
 import { useFarm } from '../context/FarmContext.jsx';
 import { useUI } from '../context/UIContext.jsx';
@@ -33,6 +35,8 @@ export default function Reports() {
   const { farmName } = useFarm();
   const { toast } = useUI();
 
+  const [mode, setMode] = useState('pdf'); // pdf | package
+  const [emailPdf, setEmailPdf] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [withReceipts, setWithReceipts] = useState(true);
   const [email, setEmail] = useState(() => {
@@ -159,12 +163,20 @@ export default function Reports() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-extrabold text-slate-900">דוח לרואה החשבון</h1>
+      <h1 className="text-2xl font-extrabold text-slate-900">דוחות וייצוא</h1>
+      <Segmented
+        value={mode}
+        onChange={setMode}
+        className="w-full sm:w-auto"
+        options={[{ value: 'pdf', label: 'דוח PDF לרואה חשבון' }, { value: 'package', label: 'חבילת מסמכים (ZIP)' }]}
+      />
       <PeriodPicker period={period} />
       <ErrorBox>{error}</ErrorBox>
 
       {loading ? (
         <PageLoader />
+      ) : mode === 'package' ? (
+        <DocumentExport period={period} txs={txs} />
       ) : (
         <div className="animate-rise space-y-5">
           <section className="card space-y-4">
@@ -235,6 +247,9 @@ export default function Reports() {
                   <button type="button" className="btn-secondary" onClick={share}>
                     <Share2 className="h-4 w-4" /> שיתוף הקובץ
                   </button>
+                  <button type="button" className="btn-secondary col-span-2" onClick={() => setEmailPdf(true)}>
+                    <Mail className="h-4 w-4" /> שליחת ה-PDF במייל ישירות מהמערכת
+                  </button>
                 </div>
                 <div>
                   <label className="label" htmlFor="acc-email">
@@ -275,6 +290,16 @@ export default function Reports() {
             </button>
           </section>
         </div>
+      )}
+
+      {emailPdf && pdf && (
+        <SendEmailModal
+          defaultSubject={`דוח הוצאות והכנסות – ${farmName} – ${period.label}`}
+          defaultMessage={`שלום,\nמצורף דוח הוצאות והכנסות לתקופה ${period.label}.\n\n${summaryText}`}
+          fileLabel={`${pdf.filename} (${(pdf.blob.size / 1048576).toFixed(1)}MB)`}
+          buildFile={async () => ({ blob: pdf.blob, filename: pdf.filename, contentType: 'application/pdf' })}
+          onClose={() => setEmailPdf(false)}
+        />
       )}
 
       {/* off-screen A4 pages that are rasterised into the PDF */}

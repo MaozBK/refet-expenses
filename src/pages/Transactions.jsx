@@ -5,20 +5,26 @@ import ReceiptViewer from '../components/ReceiptViewer.jsx';
 import { ConfirmDialog, Empty, ErrorBox, PageLoader, Segmented } from '../components/ui.jsx';
 import { useFarm } from '../context/FarmContext.jsx';
 import { useUI } from '../context/UIContext.jsx';
+import { useDocuments } from '../hooks/useDocuments.js';
 import { usePeriod } from '../hooks/usePeriod.js';
 import { useTransactions } from '../hooks/useTransactions.js';
 import { deleteTransactions } from '../lib/api.js';
+import { transactionsWithoutReceipt } from '../lib/documents.js';
 import { NO_CATEGORY, NO_CATEGORY_COLOR, sumTotals } from '../lib/analytics.js';
 import { formatDate, formatILS } from '../lib/format.js';
 
 export default function Transactions() {
   const period = usePeriod('month');
   const { txs, loading, error } = useTransactions(period.range);
-  const { canWrite } = useFarm();
+  const { canWrite, categories, contacts } = useFarm();
   const { openForm, bump, toast } = useUI();
+  const { docs } = useDocuments();
 
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [contactFilter, setContactFilter] = useState('');
+  const [noReceiptOnly, setNoReceiptOnly] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [confirm, setConfirm] = useState(null); // array of txs to delete
   const [deleting, setDeleting] = useState(false);
@@ -26,12 +32,16 @@ export default function Transactions() {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const missing = noReceiptOnly ? new Set(transactionsWithoutReceipt(txs, docs).map((t) => t.id)) : null;
     return txs.filter((t) => {
       if (typeFilter !== 'all' && t.type !== typeFilter) return false;
+      if (categoryFilter && t.category_id !== categoryFilter) return false;
+      if (contactFilter && t.contact_id !== contactFilter) return false;
+      if (missing && !missing.has(t.id)) return false;
       if (!q) return true;
-      return [t.vendor, t.categories?.name, t.notes].some((s) => s && s.toLowerCase().includes(q));
+      return [t.vendor, t.contacts?.name, t.categories?.name, t.notes].some((s) => s && s.toLowerCase().includes(q));
     });
-  }, [txs, query, typeFilter]);
+  }, [txs, docs, query, typeFilter, categoryFilter, contactFilter, noReceiptOnly]);
 
   // drop selections that are no longer visible
   useEffect(() => {
@@ -97,6 +107,29 @@ export default function Transactions() {
             { value: 'income', label: 'הכנסות' },
           ]}
         />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <select className="input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="קטגוריה">
+            <option value="">כל הקטגוריות</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.group_name ? `${c.group_name} · ` : ''}
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <select className="input" value={contactFilter} onChange={(e) => setContactFilter(e.target.value)} aria-label="איש קשר">
+            <option value="">כל אנשי הקשר</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <label className="flex min-h-[40px] items-center gap-3 text-sm font-medium text-slate-700">
+          <input type="checkbox" className="h-5 w-5 accent-brand-600" checked={noReceiptOnly} onChange={(e) => setNoReceiptOnly(e.target.checked)} />
+          להציג רק תנועות שחסרה להן קבלה
+        </label>
       </div>
 
       <ErrorBox>{error}</ErrorBox>
@@ -174,7 +207,7 @@ export default function Transactions() {
                       <Receipt className="h-5 w-5" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold text-slate-900">{t.vendor || t.categories?.name || NO_CATEGORY}</span>
+                      <span className="block truncate font-semibold text-slate-900">{t.contacts?.name || t.vendor || t.categories?.name || NO_CATEGORY}</span>
                       <span className="block truncate text-xs text-slate-500">
                         {formatDate(t.tx_date)} · {t.categories?.name || NO_CATEGORY}
                         {t.notes ? ` · ${t.notes}` : ''}

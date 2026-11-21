@@ -1,5 +1,9 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Loader2, X } from 'lucide-react';
+
+// Esc closes only the top-most dialog when several are open.
+const modalStack = [];
 
 export function Spinner({ className = 'h-5 w-5' }) {
   return <Loader2 className={`animate-spin ${className}`} aria-hidden />;
@@ -15,18 +19,21 @@ export function PageLoader({ label = 'טוען…' }) {
 
 export function Modal({ title, onClose, children, footer, size = 'md', dismissable = true }) {
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && dismissable && onClose();
+    const token = {};
+    modalStack.push(token);
+    const onKey = (e) => e.key === 'Escape' && dismissable && modalStack[modalStack.length - 1] === token && onClose();
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
+      modalStack.splice(modalStack.indexOf(token), 1);
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
   }, [onClose, dismissable]);
 
   const sizes = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-4xl' };
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div
         className="absolute inset-0 animate-fade bg-slate-900/45 backdrop-blur-[2px]"
@@ -53,7 +60,8 @@ export function Modal({ title, onClose, children, footer, size = 'md', dismissab
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
